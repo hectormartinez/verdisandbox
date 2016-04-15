@@ -1,5 +1,5 @@
 from nltk.corpus import framenet as fn
-
+fn.propagate_semtypes()
 from pandas import pandas as pd
 
 
@@ -7,16 +7,23 @@ def isFirstBeginner(framename):
     #A first beginner is a frame X such as the superFrameName of all its Inheritance relations is X (because it is alway the parent of the Inheritance)
     f = fn.frame_by_name(framename)
     for rel in f['frameRelations']:
-        if (rel['type']['name']) == 'Inheritance':
-            #if rel['superFrameName'] != framename:
-            #    return False
-            print(framename,rel['superFrameName'],rel['subFrameName'])
+        if (rel['type']['name']) in ['Inheritance','Subframe','Using']:
+            if rel['superFrameName'] != framename:
+                return False
+            #print(framename,rel['superFrameName'],rel['subFrameName'])
     return True
 
 
-for fx in fn.frames()[:10]:
+BeginList = []
+
+
+for fx in fn.frames():
     if isFirstBeginner(fx['name']):
-        print(fx['name'])
+        BeginList.append(fx['name']+'\t_')
+
+#print(len(BeginList))
+print('\n'.join(sorted(BeginList)))
+
 
 D={}
 D['WHO']=['People']
