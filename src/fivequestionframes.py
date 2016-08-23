@@ -3,6 +3,13 @@ fn.propagate_semtypes()
 from pandas import pandas as pd
 
 
+def NumLexU(framename):
+    f = fn.frame_by_name(framename)
+    if f['lexUnit']:
+        return(" ".join(f['lexUnit']))
+    else:
+        return "_"
+
 def isFirstBeginner(framename):
     #A first beginner is a frame X such as the superFrameName of all its Inheritance relations is X (because it is alway the parent of the Inheritance)
     f = fn.frame_by_name(framename)
@@ -19,7 +26,7 @@ BeginList = []
 
 for fx in fn.frames():
     if isFirstBeginner(fx['name']):
-        BeginList.append(fx['name']+'\t_')
+        BeginList.append(fx['name']+'\t'+str(NumLexU(fx['name']))+'\t_')
 
 #print(len(BeginList))
 print('\n'.join(sorted(BeginList)))
@@ -33,7 +40,7 @@ D['WHY']=['Event','Eventive_affecting']
 D['HOW']=['']
 
 
-frames = pd.read_csv("../data/res/frametargetlexicon.tsv",sep="\t")
+frames = pd.read_csv("../res/frametargetlexicon.tsv",sep="\t")
 
 framenames=set(frames.framename)
 
