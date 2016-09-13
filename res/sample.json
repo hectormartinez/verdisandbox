@@ -1,0 +1,15 @@
+{
+{
+    "_id" : NumberLong(112384),
+    "date" : ISODate("2016-04-20T00:05:07.938Z"),
+    "customEventName" : "US Sex Abuse Survivor To Sue Indian Priest, Diocese",
+    "summary" : "MINNEAPOLIS (KFGO-AM) - A federal lawsuit has been filed on behalf of a woman who says she was sexually abused by a Catholic priest in the Crookston Diocese."
+}
+
+{
+    "_id" : NumberLong(112415),
+    "date" : ISODate("2016-04-20T00:18:47.391Z"),
+    "customEventName" : "Peabody Energy Bonds Have Doubled Since Declaring Bankruptcy",
+    "summary" : "Peabody Energy filed for Chapter 11 bankruptcy protection in Missouri on Wednesday, reports the Financial Times, blaming a number of \"unprecedented\" factors that have affected the coal mining industry globally."
+}
+}

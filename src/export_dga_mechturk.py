@@ -39,7 +39,7 @@ def certainty(annotations):
 def main():
     parser = argparse.ArgumentParser(description="""Export AMT""")
     parser.add_argument('--input', default="/Users/hmartine/Dropbox/VerdiProjectFolder/binary_classifier_data_and_report/DGA_AMT_pilot.csv")
-    parser.add_argument('--mode', choices=['mace', 'text', 'agreement'],default='agreement')
+    parser.add_argument('--mode', choices=['mace', 'text', 'agreement'],default='text')
 
     args = parser.parse_args()
 
@@ -74,9 +74,10 @@ def main():
             ref_statement = renormalize(list(DGA[DGA.Input_row_index == row_index].Input_ref_statement)[0])
             target_statement = renormalize(list(DGA[DGA.Input_row_index == row_index].Input_target_statement)[0])
             if  row_index < 0:
-                pass
+                print(row_index,dict(Counter(annotations)))
             else:
-                print("\t".join([str(row_index),ref_statement,target_statement,simplemajority(annotations),threshold(annotations,2),threshold(annotations,4)]))
+                pass
+                #print("\t".join([str(row_index),ref_statement,target_statement,simplemajority(annotations),threshold(annotations,2),threshold(annotations,4)]))
 
 if __name__ == "__main__":
     main()
