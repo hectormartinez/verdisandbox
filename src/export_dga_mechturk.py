@@ -2,7 +2,7 @@ import argparse
 import pandas as pd
 from collections import Counter
 from nltk import agreement
-
+import numpy as np
 """"HITId","HITTypeId","Title","Description","Keywords","Reward","CreationTime","MaxAssignments","RequesterAnnotation","AssignmentDurationInSeconds","AutoApprovalDelayInSeconds","Expiration","NumberOfSimilarHITs","LifetimeInSeconds","AssignmentId","WorkerId","AssignmentStatus","AcceptTime","SubmitTime","AutoApprovalTime","ApprovalTime","RejectionTime","RequesterFeedback","WorkTimeInSeconds","LifetimeApprovalRate","Last30DaysApprovalRate","Last7DaysApprovalRate","Input.row_index","Input.ref_statement","Input.ref_title","Input.ref_url","Input.target_statement","Input.target_title","Input.target_url","Input.media_source","Input.relation_type","Answer.Category","Approve","Reject"
 """
 
@@ -38,8 +38,8 @@ def certainty(annotations):
 
 def main():
     parser = argparse.ArgumentParser(description="""Export AMT""")
-    parser.add_argument('--input', default="/Users/hmartine/Dropbox/VerdiProjectFolder/binary_classifier_data_and_report/DGA_AMT_pilot.csv")
-    parser.add_argument('--mode', choices=['mace', 'text', 'agreement'],default='agreement')
+    parser.add_argument('--input', default="/Users/hector/Dropbox/VerdiProjectFolder/binary_classifier_data_and_report/DGA_AMT_pilot.csv")
+    parser.add_argument('--mode', choices=['mace', 'text', 'agreement'],default='text')
 
     args = parser.parse_args()
 
@@ -57,17 +57,23 @@ def main():
     elif args.mode == 'agreement':
         certCount = Counter()
         for row_index in sorted(set(list(DGA.Input_row_index))):
-            annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
-            certCount[certainty(annotations)]+=1
+            if row_index > 0:
+                annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
+                certCount[certainty(annotations)]+=1
         print(certCount)
         anno_items = []
+        T = []
         for row_index in sorted(set(list(DGA.Input_row_index))):
-            annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
-            turkers = list((DGA[DGA.Input_row_index == row_index].WorkerId))
-            for a, t in zip(annotations, turkers):
-                anno_items.append((t,row_index,a)) #coder,item,label
+            if row_index > 0:
+                annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
+                turkers = list(DGA[DGA.Input_row_index == row_index].WorkerId)
+                T.extend(list(DGA[DGA.Input_row_index == row_index].WorkTimeInSeconds.values))
+
+                for a, t in zip(annotations, turkers):
+                    anno_items.append((t,row_index,a)) #coder,item,label
         task = agreement.AnnotationTask(anno_items)
-        print(task.avg_Ao(),task.alpha(),task.Do_alpha(),task.multi_kappa())
+        T = np.array(T)
+        print(T.mean(),np.median(T), task.avg_Ao(),task.alpha(),task.Do_alpha(),task.multi_kappa())
     elif args.mode == 'text':
         for row_index in sorted(set(list(DGA.Input_row_index))):
             annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
@@ -76,7 +82,7 @@ def main():
             if  row_index < 0:
                 pass
             else:
-                print("\t".join([str(row_index),ref_statement,target_statement,simplemajority(annotations),threshold(annotations,2),threshold(annotations,4)]))
+                print("\t".join([str(row_index),ref_statement,target_statement,simplemajority(annotations)]))
 
 if __name__ == "__main__":
     main()
