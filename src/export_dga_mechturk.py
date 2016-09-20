@@ -38,8 +38,10 @@ def certainty(annotations):
 
 def main():
     parser = argparse.ArgumentParser(description="""Export AMT""")
-    parser.add_argument('--input', default="/Users/hector/Dropbox/VerdiProjectFolder/binary_classifier_data_and_report/DGA_AMT_pilot.csv")
-    parser.add_argument('--mode', choices=['mace', 'text', 'agreement'],default='text')
+    parser.add_argument('--input', default="/Users/hmartine/Dropbox/VerdiProjectFolder/binary_classifier_data_and_report/DGA_AMT_extended.csv")
+    parser.add_argument('--mode', choices=['MACE', 'text', 'agreement','quantified'],default='text')
+    parser.add_argument('--max', default=10000,type=int)
+
 
     args = parser.parse_args()
 
@@ -56,15 +58,19 @@ def main():
             print(",".join(blankline))
     elif args.mode == 'agreement':
         certCount = Counter()
+        raw_annos = Counter()
         for row_index in sorted(set(list(DGA.Input_row_index))):
-            if row_index > 0:
+            if row_index > 0 and row_index  < args.max:
                 annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
                 certCount[certainty(annotations)]+=1
+                for a in annotations:
+                    raw_annos[a]+=1
         print(certCount)
+        print("Ommi",raw_annos["omission"]/(sum(raw_annos.values())))
         anno_items = []
         T = []
         for row_index in sorted(set(list(DGA.Input_row_index))):
-            if row_index > 0:
+            if row_index > 0 and row_index  < args.max:
                 annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
                 turkers = list(DGA[DGA.Input_row_index == row_index].WorkerId)
                 T.extend(list(DGA[DGA.Input_row_index == row_index].WorkTimeInSeconds.values))
@@ -83,6 +89,13 @@ def main():
                 pass
             else:
                 print("\t".join([str(row_index),ref_statement,target_statement,simplemajority(annotations)]))
+    elif args.mode == 'quantified':
+        Q = []
+        for row_index in sorted(set(list(DGA.Input_row_index))):
+            annotations = list((DGA[DGA.Input_row_index == row_index].Answer_Category))
+            q = [ int(a == 'omission') for a in annotations]
+            Q.append(str(sum(q)/(len(q))))
+        print(args.input,",".join(Q))
 
 if __name__ == "__main__":
     main()

@@ -26,7 +26,7 @@ class StatementPair:
         self.ref_statement = ref_statement #sentence is a list of forms
         self.target_statement = target_statement
         self.row_index = int(row_index)
-        self.label = 1 if annotation == "SAME" else 0
+        self.label = 0 if annotation == "SAME" else 1
 
     def _word_venn_diagram(self):
         commonwords = set(self.ref_statement).intersection(set(self.target_statement))
@@ -84,17 +84,29 @@ class StatementPair:
         #D["c_dif"] = 0 if np.isnan(co) else co
         return D
 
-    def featurize(self,embeddings):
+    def e_stop(self):
         D = {}
-        D.update(self.a_dicecoeff())
-        D.update(self.b_lengths())
-        D.update(self.c_embeds(embeddings))
-        #D.update(self.d_bow())
-
+        commonwords, onlyref, onlytarget = self._word_venn_diagram()
+        D["e_prop_stop"] = len([x for x in onlyref if x in self.stoplist()])/len(onlyref) if len(onlyref) > 0 else 0
         return D
 
 
-def collect_features(input,embeddings,vectorize=True,generateFeatures=True):
+    def featurize(self,variant,embeddings):
+        D = {}
+        if "a" in variant:
+            D.update(self.a_dicecoeff())
+        if "b" in variant:
+            D.update(self.b_lengths())
+        if "c" in variant:
+            D.update(self.c_embeds(embeddings))
+        if "d" in variant:
+            D.update(self.d_bow())
+        if "e" in variant:
+            D.update(self.e_stop())
+        return D
+
+
+def collect_features(input,embeddings,variant,vectorize=True,generateFeatures=True):
 
     labels = []
     featuredicts = []
@@ -107,7 +119,7 @@ def collect_features(input,embeddings,vectorize=True,generateFeatures=True):
 
         sp = StatementPair(row_index,ref_statement,target_statement,annotation)
         if generateFeatures and int(row_index) > 0:
-            featuredicts.append(sp.featurize(embeddings))
+            featuredicts.append(sp.featurize(variant,embeddings))
             labels.append(sp.label)
     if vectorize:
         vec = DictVectorizer()
@@ -120,15 +132,13 @@ def collect_features(input,embeddings,vectorize=True,generateFeatures=True):
 
 
 
-def crossval(features, labels, vec,printcoeffs=False):
+def crossval(features, labels,variant,printcoeffs=False):
     maxent = LogisticRegression(penalty='l2')
     dummyclass = DummyClassifier("most_frequent")
     #maxent = SGDClassifier(penalty='l1')
     #maxent = Perceptron(penalty='l1')
     maxent.fit(features,labels) # only needed for feature inspection, crossvalidation calls fit(), too
-    coeffcounter = Counter(vec.feature_names_)
-    negfeats = set(vec.feature_names_)
-    posfeats = set(vec.feature_names_)
+
 
     scores = defaultdict(list)
     TotalCoeffCounter = Counter()
@@ -150,25 +160,25 @@ def crossval(features, labels, vec,printcoeffs=False):
         #    coeffcounter_i[name] = value
 
         acc = accuracy_score(ypred_i, Testy_i)
-        pre = precision_score(ypred_i, Testy_i)
-        rec = recall_score(ypred_i, Testy_i)
-        f1 = f1_score(ypred_i, Testy_i)
-        # shared task uses f1 of *accuracy* and recall!
+        #pre = precision_score(ypred_i, Testy_i,pos_label=1)
+        #rec = recall_score(ypred_i, Testy_i,pos_label=1)
+        f1 = f1_score(ypred_i, Testy_i,pos_label=1)
 
         scores["Accuracy"].append(acc)
         scores["F1"].append(f1)
-        scores["Precision"].append(pre)
-        scores["Recall"].append(rec)
+        #scores["Precision"].append(pre)
+        #scores["Recall"].append(rec)
 
-        acc = accuracy_score(ydummypred_i, Testy_i)
-        pre = precision_score(ydummypred_i, Testy_i)
-        rec = recall_score(ydummypred_i, Testy_i)
-        f1 = f1_score(ydummypred_i, Testy_i)
-
-        scores["dummy-Accuracy"].append(acc)
-        scores["dummy-F1"].append(f1)
-        scores["dummy-Precision"].append(pre)
-        scores["dummy-Recall"].append(rec)
+        #
+        # acc = accuracy_score(ydummypred_i, Testy_i)
+        # pre = precision_score(ydummypred_i, Testy_i,pos_label=1)
+        # rec = recall_score(ydummypred_i, Testy_i,pos_label=1)
+        # f1 = f1_score(ydummypred_i, Testy_i,pos_label=1)
+        #
+        # scores["dummy-Accuracy"].append(acc)
+        # scores["dummy-F1"].append(f1)
+        # scores["dummy-Precision"].append(pre)
+        # scores["dummy-Recall"].append(rec)
 
         #posfeats = posfeats.intersection(set([key for (key,value) in coeffcounter.most_common()[:20]]))
         #negfeats = negfeats.intersection(set([key for (key,value) in coeffcounter.most_common()[-20:]]))
@@ -178,24 +188,21 @@ def crossval(features, labels, vec,printcoeffs=False):
 
     #scores = cross_validation.cross_val_score(maxent, features, labels, cv=10)
     #print("--")
-    for key in sorted(scores.keys()):
-        currentmetric = np.array(scores[key])
-        print("%s : %0.2f (+/- %0.2f)" % (key,currentmetric.mean(), currentmetric.std()))
-    print("--")
+    #for key in sorted(scores.keys()):
+    #    currentmetric = np.array(scores[key])
+        #print("%s : %0.2f (+/- %0.2f)" % (key,currentmetric.mean(), currentmetric.std()))
+        #print("%s : %0.2f" % (key,currentmetric.mean()))
+    print("%s %.2f (%.2f)" % (variant,np.array(scores["Accuracy"]).mean(),np.array(scores["F1"]).mean()))
     if printcoeffs:
 
         maxent.fit(features,labels) # fit on everything
 
         coeffs_total = list(maxent.coef_[0])
-        for value,name in zip(coeffs_total,vec.feature_names_):
-                TotalCoeffCounter[name] = value
         for (key,value) in TotalCoeffCounter.most_common()[:20]:
             print(key,value)
         print("---")
         for (key,value) in TotalCoeffCounter.most_common()[-20:]:
             print(key,value)
-        print("lowest coeff:",coeffcounter.most_common()[-1])
-        print("highest coeff",coeffcounter.most_common()[0])
 
 def load_embeddings(embedpath):
     E = {}
@@ -208,14 +215,16 @@ def load_embeddings(embedpath):
 
 def main():
     parser = argparse.ArgumentParser(description="""Export AMT""")
-    parser.add_argument('--input', default="../res/dga_amt_simplemajority.tsv")
+    parser.add_argument('--input', default="../res/dga_extendedamt_simplemajority.tsv")
     parser.add_argument('--embeddings', default="/Users/hmartine/data/glove.6B/glove.6B.50d.txt")
     args = parser.parse_args()
 
     E = load_embeddings(args.embeddings)
 
-    features, labels, vec = collect_features(args.input,embeddings=E)
-    crossval(features, labels, vec)
+    for variant in ["a","b","c","d","e","ab","ac","ad","ae","bc","bd","be","cd","ce","abc","cde","abd","abde","abcde"]:
+
+        features, labels, vec = collect_features(args.input,embeddings=E,variant=variant)
+        crossval(features, labels,variant)
 
 
 
