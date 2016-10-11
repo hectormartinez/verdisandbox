@@ -13,6 +13,7 @@ import numpy as np
 from nltk.corpus import stopwords
 from scipy.spatial.distance import cosine
 from sklearn.dummy import DummyClassifier
+import itertools
 
 
 
@@ -41,7 +42,8 @@ class StatementPair:
                  wordvecs.append(embeddings[word])
 
         wordvecs = np.array(wordvecs)
-        return wordvecs.sum(axis=0)
+        wv =  wordvecs.sum(axis=0) / (len(wordvecs))
+        return wv
 
     def a_dicecoeff(self):
         D = {}
@@ -49,7 +51,6 @@ class StatementPair:
 
         D["a_dicecoeff"] = len(commonwords) / len(self.ref_statement)
         D["a_onlyref"] = len(onlyref) / len(commonwords)
-        D["a_onlyref_stop"] = len([x for x in onlyref if x in self.stoplist()])/len(onlyref) if len(onlyref) > 0 else 0
         return D
 
     def b_lengths(self):
@@ -59,15 +60,15 @@ class StatementPair:
         D["b_lendiff"] = len(self.ref_statement)- len(self.target_statement)
         return D
 
-    def d_bow(self):
+    def c_bow(self):
         D = {}
 
         commonwords, onlyref, onlytarget = self._word_venn_diagram()
         for b in onlyref:
-            D["d_r_"+b]=1
+            D["c_r_"+b]=1
         return D
 
-    def c_embeds(self,embeddings):
+    def d_embeds(self,embeddings):
         D = {}
         commonwords, onlyref, onlytarget = self._word_venn_diagram()
 
@@ -76,7 +77,7 @@ class StatementPair:
         #    D["c_com_"+str(i)]=v
         ref_average_vector = self._get_average_vector(onlyref, embeddings)
         for i, v in enumerate(ref_average_vector):
-            D["c_ref_" + str(i)] = v
+            D["d_ref_" + str(i)] = v
         #tgt_average_vector = self._get_average_vector(onlytarget, embeddings)
         #for i, v in enumerate(tgt_average_vector):
         #    D["c_tgt_" + str(i)] = v
@@ -90,6 +91,34 @@ class StatementPair:
         D["e_prop_stop"] = len([x for x in onlyref if x in self.stoplist()])/len(onlyref) if len(onlyref) > 0 else 0
         return D
 
+    def f_capitalized(self):
+        D = {}
+        commonwords, onlyref, onlytarget = self._word_venn_diagram()
+        onlyref.difference(set([x for x in onlyref if x in self.stoplist()]))
+        onlyref_caps = set([x for x in onlyref if x[0].isupper()])
+        #D["f_nerproxy"] = len(onlyref_caps)
+
+
+        acc = []
+        sequences = set()
+        for w in self.ref_statement:
+            if w in onlyref_caps:
+                acc.append(w)
+            elif acc:
+                sequences.add(" ".join(acc))
+                acc = []
+
+        if acc:
+            sequences.add(acc)
+            acc = []
+        D["f_nerproxy2"] = len(sequences)
+
+
+
+        return D
+
+
+
 
     def featurize(self,variant,embeddings):
         D = {}
@@ -98,11 +127,13 @@ class StatementPair:
         if "b" in variant:
             D.update(self.b_lengths())
         if "c" in variant:
-            D.update(self.c_embeds(embeddings))
+            D.update(self.c_bow())
         if "d" in variant:
-            D.update(self.d_bow())
+            D.update(self.d_embeds(embeddings))
         if "e" in variant:
             D.update(self.e_stop())
+        if "f" in variant:
+            D.update(self.f_capitalized())
         return D
 
 
@@ -114,8 +145,8 @@ def collect_features(input,embeddings,variant,vectorize=True,generateFeatures=Tr
 
     for line in open(input).readlines():
         row_index, ref_statement, target_statement, annotation = line.strip().split("\t")
-        ref_statement  = wordpunct_tokenize(ref_statement.lower())
-        target_statement = wordpunct_tokenize(target_statement.lower())
+        ref_statement  = wordpunct_tokenize(ref_statement)
+        target_statement = wordpunct_tokenize(target_statement)
 
         sp = StatementPair(row_index,ref_statement,target_statement,annotation)
         if generateFeatures and int(row_index) > 0:
@@ -221,7 +252,15 @@ def main():
 
     E = load_embeddings(args.embeddings)
 
-    for variant in ["a","b","c","d","e","ab","ac","ad","ae","bc","bd","be","cd","ce","abc","cde","abd","abde","abcde"]:
+    letter_ids = "abcdef"
+
+    variants = []
+    for k in range(1,6):
+        variants.extend(["".join(x) for x in itertools.combinations(letter_ids,k)])
+    print(variants)
+
+
+    for variant in variants:# ["a","b","c","d","e","f","ab","ac","ad","ae","af","bc","bd","be","bf","cd","ce","cf","abc","cde","abd","abf","bcf","cef","abde","abdf","abcde","abcdef"]:
 
         features, labels, vec = collect_features(args.input,embeddings=E,variant=variant)
         crossval(features, labels,variant)

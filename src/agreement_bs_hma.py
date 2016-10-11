@@ -8,7 +8,7 @@ import numpy as np
 anns = pd.read_csv("../res/100ex_BS_HMA.csv")
 
 BS = list(anns.BS)
-HM = list(anns.HMA)
+HM = list(anns.HM)
 
 annoitems = []
 
