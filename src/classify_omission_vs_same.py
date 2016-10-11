@@ -1,17 +1,15 @@
 import argparse
-import pandas as pd
 from nltk.tokenize import wordpunct_tokenize
 from sklearn import cross_validation
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.linear_model.logistic import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn import svm
+
 from sklearn.preprocessing import Normalizer
 from collections import Counter, defaultdict
 from sklearn.feature_extraction import DictVectorizer
 import numpy as np
 from nltk.corpus import stopwords
-from scipy.spatial.distance import cosine
+
 from sklearn.dummy import DummyClassifier
 import itertools
 
@@ -47,10 +45,14 @@ class StatementPair:
 
     def a_dicecoeff(self):
         D = {}
-        commonwords, onlyref, onlytarget = self._word_venn_diagram()
+        try:
+            commonwords, onlyref, onlytarget = self._word_venn_diagram()
 
-        D["a_dicecoeff"] = len(commonwords) / len(self.ref_statement)
-        D["a_onlyref"] = len(onlyref) / len(commonwords)
+            D["a_dicecoeff"] = len(commonwords) / len(self.ref_statement)
+            D["a_onlyref"] = len(onlyref) / len(commonwords)
+        except:
+            D["a_dicecoeff"] = 0
+            D["a_onlyref"] = 0
         return D
 
     def b_lengths(self):
