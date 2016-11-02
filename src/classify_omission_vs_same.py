@@ -14,6 +14,12 @@ from sklearn.dummy import DummyClassifier
 import itertools
 
 
+trainingbow = set()
+
+ner_path_bin = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/stanford-ner.jar"
+ner_path_model = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.conll.4class.distsim.crf.ser.gz"
+
+from nltk.tag.stanford import StanfordNERTagger
 
 class StatementPair:
     @staticmethod
@@ -62,12 +68,16 @@ class StatementPair:
         D["b_lendiff"] = len(self.ref_statement)- len(self.target_statement)
         return D
 
-    def c_bow(self):
+    def c_bow(self,bowfilter=None):
         D = {}
-
         commonwords, onlyref, onlytarget = self._word_venn_diagram()
-        for b in onlyref:
-            D["c_r_"+b]=1
+        if bowfilter:
+            for b in onlyref:
+                if b in bowfilter:
+                    D["c_r_"+b]=1
+        else:
+            for b in onlyref:
+                D["c_r_" + b] = 1
         return D
 
     def d_embeds(self,embeddings):
@@ -93,11 +103,40 @@ class StatementPair:
         D["e_prop_stop"] = len([x for x in onlyref if x in self.stoplist()])/len(onlyref) if len(onlyref) > 0 else 0
         return D
 
-    def f_capitalized(self):
+    def _ner_sequences(self,taggedarray):
+        acc = []
+        sequences = set()
+        for w, t in taggedarray:
+            if t != "O":
+                acc.append(w)
+            elif acc:
+                sequences.add(" ".join(acc))
+                acc = []
+        if acc:
+            sequences.add(" ".join(acc))
+            acc = []
+        return sequences
+
+
+
+    def f_ner(self,ner_tagger):
         D = {}
-        commonwords, onlyref, onlytarget = self._word_venn_diagram()
-        onlyref.difference(set([x for x in onlyref if x in self.stoplist()]))
-        onlyref_caps = set([x for x in onlyref if x[0].isupper()])
+
+        ref_ner = ner_tagger.tag(self.ref_statement)
+        target_ner = ner_tagger.tag(self.target_statement)
+        ref_seqs=self._ner_sequences(ref_ner)
+        target_seqs=self._ner_sequences(target_ner)
+        print(ref_seqs.difference(target_seqs))
+        D["f_ner"] = len(ref_seqs.difference(target_seqs))
+        return D
+
+    def f_ner2(self,ner_tagger):
+        D = {}
+
+        onlyref_ner = set(ner_tagger.tag(self.ref_statement)).difference(set(ner_tagger.tag(self.target_statement)))
+
+        onlyref_ner.difference(set([x for x in onlyref_ner if x in self.stoplist()]))
+        onlyref_ner = set([x for x in onlyref_ner if x[0].isupper()])
         #D["f_nerproxy"] = len(onlyref_caps)
 
 
@@ -122,24 +161,24 @@ class StatementPair:
 
 
 
-    def featurize(self,variant,embeddings):
+    def featurize(self,variant,embeddings,ner_tagger,bowfilter=None):
         D = {}
         if "a" in variant:
             D.update(self.a_dicecoeff())
         if "b" in variant:
             D.update(self.b_lengths())
         if "c" in variant:
-            D.update(self.c_bow())
+            D.update(self.c_bow(bowfilter))
         if "d" in variant:
             D.update(self.d_embeds(embeddings))
         if "e" in variant:
             D.update(self.e_stop())
         if "f" in variant:
-            D.update(self.f_capitalized())
+            D.update(self.f_ner(ner_tagger))
         return D
 
 
-def collect_features(input,embeddings,variant,vectorize=True,generateFeatures=True):
+def collect_features(input,variant,embeddings,ner_tagger,vectorize=True,generateFeatures=True):
 
     labels = []
     featuredicts = []
@@ -152,7 +191,7 @@ def collect_features(input,embeddings,variant,vectorize=True,generateFeatures=Tr
 
         sp = StatementPair(row_index,ref_statement,target_statement,annotation)
         if generateFeatures and int(row_index) > 0:
-            featuredicts.append(sp.featurize(variant,embeddings))
+            featuredicts.append(sp.featurize(variant,embeddings,ner_tagger))
             labels.append(sp.label)
     if vectorize:
         vec = DictVectorizer()
@@ -253,7 +292,7 @@ def main():
     args = parser.parse_args()
 
     E = load_embeddings(args.embeddings)
-
+    ner_tagger = StanfordNERTagger(ner_path_model,ner_path_bin)
     letter_ids = "abcdef"
 
     variants = []
@@ -264,7 +303,7 @@ def main():
 
     for variant in variants:# ["a","b","c","d","e","f","ab","ac","ad","ae","af","bc","bd","be","bf","cd","ce","cf","abc","cde","abd","abf","bcf","cef","abde","abdf","abcde","abcdef"]:
 
-        features, labels, vec = collect_features(args.input,embeddings=E,variant=variant)
+        features, labels, vec = collect_features(args.input,variant=variant,embeddings=E,ner_tagger=ner_tagger)
         crossval(features, labels,variant)
 
 
