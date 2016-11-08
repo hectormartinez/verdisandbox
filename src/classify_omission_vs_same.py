@@ -18,6 +18,7 @@ trainingbow = set()
 
 ner_path_bin = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/stanford-ner.jar"
 ner_path_model = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.conll.4class.distsim.crf.ser.gz"
+ner_path_model = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.muc.7class.distsim.crf.ser.gz"
 
 from nltk.tag.stanford import StanfordNERTagger
 
@@ -104,6 +105,7 @@ class StatementPair:
         return D
 
     def _ner_sequences(self,taggedarray):
+        #TODO try all models (3/4/7) and see if it makes a difference, which it does not.
         acc = []
         sequences = set()
         for w, t in taggedarray:
@@ -126,39 +128,9 @@ class StatementPair:
         target_ner = ner_tagger.tag(self.target_statement)
         ref_seqs=self._ner_sequences(ref_ner)
         target_seqs=self._ner_sequences(target_ner)
-        print(ref_seqs.difference(target_seqs))
+        #print(ref_seqs.difference(target_seqs))
         D["f_ner"] = len(ref_seqs.difference(target_seqs))
         return D
-
-    def f_ner2(self,ner_tagger):
-        D = {}
-
-        onlyref_ner = set(ner_tagger.tag(self.ref_statement)).difference(set(ner_tagger.tag(self.target_statement)))
-
-        onlyref_ner.difference(set([x for x in onlyref_ner if x in self.stoplist()]))
-        onlyref_ner = set([x for x in onlyref_ner if x[0].isupper()])
-        #D["f_nerproxy"] = len(onlyref_caps)
-
-
-        acc = []
-        sequences = set()
-        for w in self.ref_statement:
-            if w in onlyref_caps:
-                acc.append(w)
-            elif acc:
-                sequences.add(" ".join(acc))
-                acc = []
-
-        if acc:
-            sequences.add(acc)
-            acc = []
-        D["f_nerproxy2"] = len(sequences)
-
-
-
-        return D
-
-
 
 
     def featurize(self,variant,embeddings,ner_tagger,bowfilter=None):
