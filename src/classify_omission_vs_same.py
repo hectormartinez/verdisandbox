@@ -1,5 +1,6 @@
 import argparse
 from nltk.tokenize import wordpunct_tokenize
+import pandas as pd
 from sklearn import cross_validation
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.linear_model.logistic import LogisticRegression
@@ -13,12 +14,13 @@ from nltk.corpus import stopwords
 from sklearn.dummy import DummyClassifier
 import itertools
 
+RANDOMSTATE=112
 
 trainingbow = set()
 
 ner_path_bin = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/stanford-ner.jar"
 ner_path_model = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.conll.4class.distsim.crf.ser.gz"
-ner_path_model = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.muc.7class.distsim.crf.ser.gz"
+#ner_path_model = "/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.muc.7class.distsim.crf.ser.gz"
 
 from nltk.tag.stanford import StanfordNERTagger
 
@@ -28,11 +30,19 @@ class StatementPair:
         sl = stopwords.words("english") + ", \" : ' . ; ! ?".split()
         return sl
 
-    def __init__(self,row_index,ref_statement,target_statement,annotation):
+    def __init__(self,row_index,ref_statement,target_statement,annotation,ner_tagger=None):
         self.ref_statement = ref_statement #sentence is a list of forms
         self.target_statement = target_statement
         self.row_index = int(row_index)
         self.label = 0 if annotation == "SAME" else 1
+        if ner_tagger:
+            self.ref_ner = ner_tagger.tag(self.ref_statement)
+            self.target_ner = ner_tagger.tag(self.target_statement)
+        else:
+            self.ref_ner =  [(x,"X") for x in self.ref_statement if x[0].isupper()]
+            self.target_ner = [(x,"X") for x in self.target_statement if x[0].isupper()]
+
+
 
     def _word_venn_diagram(self):
         commonwords = set(self.ref_statement).intersection(set(self.target_statement))
@@ -121,19 +131,16 @@ class StatementPair:
 
 
 
-    def f_ner(self,ner_tagger):
+    def f_ner(self):
         D = {}
-
-        ref_ner = ner_tagger.tag(self.ref_statement)
-        target_ner = ner_tagger.tag(self.target_statement)
-        ref_seqs=self._ner_sequences(ref_ner)
-        target_seqs=self._ner_sequences(target_ner)
+        ref_seqs=self._ner_sequences(self.ref_ner)
+        target_seqs=self._ner_sequences(self.target_ner)
         #print(ref_seqs.difference(target_seqs))
         D["f_ner"] = len(ref_seqs.difference(target_seqs))
         return D
 
 
-    def featurize(self,variant,embeddings,ner_tagger,bowfilter=None):
+    def featurize(self,variant,embeddings,bowfilter=None):
         D = {}
         if "a" in variant:
             D.update(self.a_dicecoeff())
@@ -146,33 +153,33 @@ class StatementPair:
         if "e" in variant:
             D.update(self.e_stop())
         if "f" in variant:
-            D.update(self.f_ner(ner_tagger))
+            D.update(self.f_ner())
         return D
 
 
-def collect_features(input,variant,embeddings,ner_tagger,vectorize=True,generateFeatures=True):
 
-    labels = []
-    featuredicts = []
-
-
-    for line in open(input).readlines():
+def getStatementPairs(infile,ner_tagger):
+    pairs = []
+    for line in open(infile).readlines():
         row_index, ref_statement, target_statement, annotation = line.strip().split("\t")
-        ref_statement  = wordpunct_tokenize(ref_statement)
+        ref_statement = wordpunct_tokenize(ref_statement)
         target_statement = wordpunct_tokenize(target_statement)
+        sp = StatementPair(row_index, ref_statement, target_statement, annotation,ner_tagger)
+        pairs.append(sp)
+    return pairs
 
-        sp = StatementPair(row_index,ref_statement,target_statement,annotation)
-        if generateFeatures and int(row_index) > 0:
-            featuredicts.append(sp.featurize(variant,embeddings,ner_tagger))
-            labels.append(sp.label)
-    if vectorize:
-        vec = DictVectorizer()
-        norm = Normalizer()
-        features = vec.fit_transform(featuredicts)#.toarray()
-        labels = np.array(labels)
-        return features, labels, vec
-    else:
-        return featuredicts,labels, None
+
+
+
+def collect_features(pairs,variant,embeddings):
+    labels = [sp.label for sp in pairs]
+    featuredicts = [sp.featurize(variant,embeddings) for sp in pairs]
+
+    vec = DictVectorizer()
+    norm = Normalizer()
+    features = vec.fit_transform(featuredicts)#.toarray()
+    labels = np.array(labels)
+    return features, labels, vec
 
 
 
@@ -186,8 +193,11 @@ def crossval(features, labels,variant,printcoeffs=False):
 
     scores = defaultdict(list)
     TotalCoeffCounter = Counter()
-
-    for TrainIndices, TestIndices in cross_validation.KFold(n=features.shape[0], n_folds=10, shuffle=False, random_state=None):
+    allpreds =[]
+    alldummy = []
+    allgold = []
+    for TrainIndices, TestIndices in cross_validation.KFold(n=features.shape[0], n_folds=10, shuffle=False, random_state=RANDOMSTATE):
+        #print(TestIndices)
         TrainX_i = features[TrainIndices]
         Trainy_i = labels[TrainIndices]
 
@@ -202,6 +212,9 @@ def crossval(features, labels,variant,printcoeffs=False):
         #coeffcounter_i = Counter(vec.feature_names_)
         #for value,name in zip(coeffs_i,vec.feature_names_):
         #    coeffcounter_i[name] = value
+        allpreds.extend(ypred_i)
+        allgold.extend(Testy_i)
+        alldummy.extend(ydummypred_i)
 
         acc = accuracy_score(ypred_i, Testy_i)
         #pre = precision_score(ypred_i, Testy_i,pos_label=1)
@@ -214,13 +227,13 @@ def crossval(features, labels,variant,printcoeffs=False):
         #scores["Recall"].append(rec)
 
         #
-        # acc = accuracy_score(ydummypred_i, Testy_i)
+        acc = accuracy_score(ydummypred_i, Testy_i)
         # pre = precision_score(ydummypred_i, Testy_i,pos_label=1)
         # rec = recall_score(ydummypred_i, Testy_i,pos_label=1)
-        # f1 = f1_score(ydummypred_i, Testy_i,pos_label=1)
+        f1 = f1_score(ydummypred_i, Testy_i,pos_label=1)
         #
-        # scores["dummy-Accuracy"].append(acc)
-        # scores["dummy-F1"].append(f1)
+        scores["dummy-Accuracy"].append(acc)
+        scores["dummy-F1"].append(f1)
         # scores["dummy-Precision"].append(pre)
         # scores["dummy-Recall"].append(rec)
 
@@ -236,7 +249,20 @@ def crossval(features, labels,variant,printcoeffs=False):
     #    currentmetric = np.array(scores[key])
         #print("%s : %0.2f (+/- %0.2f)" % (key,currentmetric.mean(), currentmetric.std()))
         #print("%s : %0.2f" % (key,currentmetric.mean()))
-    print("%s %.2f (%.2f)" % (variant,np.array(scores["Accuracy"]).mean(),np.array(scores["F1"]).mean()))
+    print("%s %.3f %.3f" % (variant,np.array(scores["dummy-Accuracy"]).mean(),np.array(scores["dummy-F1"]).mean()),end="")
+
+    fout = open(variant+".labels",mode="w")
+    fout.write(" ".join([str(s) for s in allpreds]))
+    fout.close()
+
+    fout = open("dummy.labels", mode="w")
+    fout.write(" ".join([str(s) for s in alldummy]))
+    fout.close()
+
+    fout = open("gold.labels", mode="w")
+    fout.write(" ".join([str(s) for s in allgold]))
+    fout.close()
+
     if printcoeffs:
 
         maxent.fit(features,labels) # fit on everything
@@ -257,27 +283,68 @@ def load_embeddings(embedpath):
     return E
 
 
+def splits_on_expert_fold(adjudicatedpath,pairs):
+    adjudicated = list(pd.read_csv(adjudicatedpath)["ADJ"])
+    filteredpairs = []
+    test_section = []
+    train_section = []
+    expert_y = [int(x) for x in adjudicated if x != '-'][:100]
+    for i, sp in enumerate(pairs):
+        if i < len(adjudicated) and adjudicated[i] == '-' and len(test_section) < 100:
+            pass
+        elif i < len(adjudicated) and (adjudicated[i] == '0' or adjudicated[i] == '1') and len(test_section) < 100:
+            test_section.append(sp)
+        elif i >= len(adjudicated):
+            train_section.append(sp)
+        else:
+            # These are the few examples that go into training because they are over  100
+            train_section.append(sp)
+    return train_section,test_section,expert_y
+
+
 def main():
     parser = argparse.ArgumentParser(description="""Export AMT""")
     parser.add_argument('--input', default="../res/dga_extendedamt_simplemajority.tsv")
     parser.add_argument('--embeddings', default="/Users/hmartine/data/glove.6B/glove.6B.50d.txt")
+    parser.add_argument('--adjudicated', default="../res/adjudicated.csv")
+    parser.add_argument('--ner_path_model', default="/Users/hmartine/proj/verdisandbox/res/stanford-ner-2015-12-09/classifiers/english.conll.4class.distsim.crf.ser.gz")
+
     args = parser.parse_args()
 
     E = load_embeddings(args.embeddings)
-    ner_tagger = StanfordNERTagger(ner_path_model,ner_path_bin)
-    letter_ids = "abcdef"
+    ner_tagger =  StanfordNERTagger(args.ner_path_model,ner_path_bin)
 
+    pairs = getStatementPairs(args.input,ner_tagger)
+    train_section, test_section, expert_test_y=splits_on_expert_fold(args.adjudicated,pairs)
+
+    #print("reading and NER done")
+    letter_ids = "abcdef"
     variants = []
-    for k in range(1,6):
+    for k in range(1,7):
         variants.extend(["".join(x) for x in itertools.combinations(letter_ids,k)])
-    print(variants)
+
 
 
     for variant in variants:# ["a","b","c","d","e","f","ab","ac","ad","ae","af","bc","bd","be","bf","cd","ce","cf","abc","cde","abd","abf","bcf","cef","abde","abdf","abcde","abcdef"]:
 
-        features, labels, vec = collect_features(args.input,variant=variant,embeddings=E,ner_tagger=ner_tagger)
+        features, labels, vec = collect_features(pairs,variant,embeddings=E)
         crossval(features, labels,variant)
+        all_feats, all_labels, vec = collect_features(test_section+train_section,variant,E)
 
+        test_X = all_feats[:len(expert_test_y)]
+        train_X = all_feats[len(expert_test_y):]
+        turker_test_y = all_labels[:len(expert_test_y)]
+        turker_train_y =  all_labels[len(expert_test_y):]
+        maxent = LogisticRegression(penalty='l2')
+        #maxent = DummyClassifier("most_frequent")
+        maxent.fit(train_X,turker_train_y)
+        y_pred=maxent.predict(test_X)
+
+        acc_turker = accuracy_score(y_pred, turker_test_y)
+        f1_turker = f1_score(y_pred, turker_test_y, pos_label=1)
+        acc_expert = accuracy_score(y_pred, expert_test_y)
+        f1_expert = f1_score(y_pred, expert_test_y, pos_label=1)
+        print(" %.3f %.3f %.3f %.3f" % (acc_turker,f1_turker,acc_expert,f1_expert))
 
 
 if __name__ == "__main__":
