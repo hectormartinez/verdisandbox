@@ -77,8 +77,8 @@ def get_similar_words(A,B,E,threshold=0.95):
     pairs = []
     for w_a in sorted([a for a in A if a.lower() not in SentencePair.stoplist() and a in E.keys()]):
         for w_b in sorted([b for b in B if b.lower() not in SentencePair.stoplist() and b in E.keys()]):
-            #sim = cosine(E[w_a],E[w_b])
-            sim = pearsonr(E[w_a],E[w_b])[0]
+            sim = cosine(E[w_a],E[w_b])
+            #sim = pearsonr(E[w_a],E[w_b])[0]
             if sim >= threshold:
                 pairs.append((w_a,w_b,sim))
     return pairs
