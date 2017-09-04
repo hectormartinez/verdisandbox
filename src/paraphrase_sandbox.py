@@ -4,6 +4,8 @@ from nltk.tokenize import wordpunct_tokenize
 from nltk.corpus import stopwords
 from scipy.spatial.distance import cosine
 from collections import Counter
+from itertools import combinations
+from scipy.stats import pearsonr
 
 def load_embeddings_file(file_name, sep=" ",lower=False):
     """
@@ -60,14 +62,23 @@ def get_instances(infile):
 
     return pairs
 
-
+def get_pairwise_from_arbitrary_tabsep(infile):
+    pairs = []
+    for line in open(infile).readlines():
+        blocks = line.lower().strip().split("\t")
+        pairs.extend(list(combinations(blocks,2)))
+    sentencepairs = []
+    for p in pairs:
+        sentencepairs.append(SentencePair([0,1],p[0],p[1],0.5))
+    return sentencepairs
 
 
 def get_similar_words(A,B,E,threshold=0.95):
     pairs = []
     for w_a in sorted([a for a in A if a.lower() not in SentencePair.stoplist() and a in E.keys()]):
         for w_b in sorted([b for b in B if b.lower() not in SentencePair.stoplist() and b in E.keys()]):
-            sim = cosine(E[w_a],E[w_b])
+            #sim = cosine(E[w_a],E[w_b])
+            sim = pearsonr(E[w_a],E[w_b])[0]
             if sim >= threshold:
                 pairs.append((w_a,w_b,sim))
     return pairs
@@ -77,17 +88,18 @@ def get_best_pairs(A,B,E,n_pairs=3):
     C = Counter()
     for w_a in sorted([a for a in A if a.lower() not in SentencePair.stoplist() and a in E.keys()]):
         for w_b in sorted([b for b in B if b.lower() not in SentencePair.stoplist() and b in E.keys()]):
-            C[(w_a,w_b)]=cosine(E[w_a],E[w_b])
+            C[(w_a,w_b)]=pearsonr(E[w_a],E[w_b])[0]
+    return C.items()
 
-    return C.most_common(n_pairs)
 
-
-def main():
-    parser = argparse.ArgumentParser(description="""Convert conllu to conll format""")
+def main2():
+    parser = argparse.ArgumentParser(description="""This one is for mass treatment of corpus dataa""")
     parser.add_argument('--input', default="../res/actors-dga-final_for_paraphrase.txt")
-    parser.add_argument('--embeds', default="../res/querydump.5w.csv.embeds")
-
-    parser.add_argument('--sample', default=200)
+    #parser.add_argument('--embeds', default="../res/querydump.5w.csv.embeds")
+    #parser.add_argument('--embeds', default="../res/glove.6B.50d.txt")
+    #parser.add_argument('--embeds', default="/Users/hmartine/data/embeds/poly_a/en.polyglot.txt")
+    parser.add_argument('--embeds', default="../res/querydump.csv.2w.embeds")
+    parser.add_argument('--sample', default=20)
 
     seed(112)
 
@@ -108,8 +120,34 @@ def main():
             for pair, score in get_best_pairs(A,B,E):
                 PC[pair]=score
 
-    for x,y in PC.most_common(100):
+    print("#",args.embeds)
+    for x,y in PC.most_common(1000):
         print("\t".join(x)+"\t"+str(y))
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="""This one is for those few handcurated paraphrase examples""")
+    parser.add_argument('--input', default="../res/paraphrase_examples_for_stats.tsv")
+    #parser.add_argument('--embeds', default="../res/querydump.csv.2w.embeds")
+    #parser.add_argument('--embeds', default="../res/querydump.5w.csv.embeds")
+    #parser.add_argument('--embeds', default="/Users/hmartine/data/embeds/poly_a/en.polyglot.txt")
+    parser.add_argument('--embeds', default="../res/glove.6B.50d.txt")
+
+
+    args = parser.parse_args()
+    E,l = load_embeddings_file(args.embeds)
+
+    PC = Counter()
+    pairs = get_pairwise_from_arbitrary_tabsep(args.input)
+    for p in pairs:
+        flag, common, A, B = p.word_venn_diagram()
+        for a,b,s in get_similar_words(A,B,E,threshold=0.80):
+            PC[tuple(sorted([a,b]))] = s
+
+    for ((a,b),s) in PC.most_common():
+        print(a,b,s)
+
 
 if __name__ == "__main__":
     main()
